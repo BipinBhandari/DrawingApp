@@ -1,13 +1,16 @@
 package bipin.drawingapp;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -16,14 +19,21 @@ import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.SeekBar;
+import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import com.larswerkman.holocolorpicker.ColorPicker;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Random;
+
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 import customviews.DrawingSurface;
-
 
 public class MainActivity extends Activity {
     @InjectView(R.id.drawing_surface) DrawingSurface drawingSurface;
@@ -36,10 +46,16 @@ public class MainActivity extends Activity {
     @InjectView(R.id.image_preview)
     ImageView imagePreview;
 
+    @InjectView(R.id.choosePhoto)
+    Button btnChoosePhoto;
+
     @InjectView(R.id.brushSizeSeekbar)
     SeekBar brushSeekbar;
 
     private int prevColor;
+    private Bitmap bitmap;
+
+    private static final int REQUEST_CODE = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,27 +80,39 @@ public class MainActivity extends Activity {
             }
         });
 
+        btnChoosePhoto.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                pickImage();
+            }
+        });
+
         btnSave.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Bitmap bitmapBg=Bitmap.createBitmap(drawingSurfaceBackground.getDrawingCache());
-//                Drawable drawableBg=new BitmapDrawable(getApplicationContext().getResources(),bitmapBg);
-
                 Bitmap bitmapSurface=Bitmap.createBitmap(drawingSurface.getDrawingCache());
-//                Drawable drawableSurface=new BitmapDrawable(getApplicationContext().getResources(),bitmapSurface);
-
-//                Bitmap bitmapClone = Bitmap.createBitmap(bitmapBg.getWidth(), bitmapBg.getHeight(), bitmapBg.getConfig());
-//                Canvas c = new Canvas(bitmapClone);
-//                c.drawBitmap(bitmapBg, new Matrix(), null);
-//                c.drawBitmap(bitmapClone, 0,0, null);
-//                drawableBg.draw(c);
-//                drawableSurface.draw(c);
-
                 imagePreview.setVisibility(View.VISIBLE);
                 drawingSurface.setVisibility(View.GONE);
-
                 drawingSurfaceBackground.setVisibility(View.GONE);
-                imagePreview.setImageDrawable(new BitmapDrawable(getApplicationContext().getResources(), overlay(bitmapBg, bitmapSurface)));
+                Bitmap finalBitmap = overlay(bitmapBg, bitmapSurface);
+                imagePreview.setImageDrawable(new BitmapDrawable(getApplicationContext().getResources(), finalBitmap));
+
+                String extStorageDirectory = Environment.getExternalStorageDirectory().toString();
+                Random random=new Random();
+                File file = new File(extStorageDirectory, "ic_launcher" + random.nextInt() + ".PNG");
+                try {
+                    FileOutputStream outputStream=new FileOutputStream(file);
+                    finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
+                    outputStream.flush();
+                    outputStream.close();
+                    Toast.makeText(MainActivity.this, "File saved", Toast.LENGTH_SHORT).show();
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
             }
         });
 
@@ -112,6 +140,38 @@ public class MainActivity extends Activity {
 
             }
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_CODE && resultCode == Activity.RESULT_OK)
+            try {
+                // We need to recyle unused bitmaps
+                if (bitmap != null) {
+                    bitmap.recycle();
+                }
+                InputStream stream = getContentResolver().openInputStream(
+                        data.getData());
+                bitmap = BitmapFactory.decodeStream(stream);
+                stream.close();
+                drawingSurfaceBackground.setBackground(new BitmapDrawable(getResources(), bitmap));
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    private void pickImage(){
+        Intent intent = new Intent();
+        intent.setType("image/*");
+        intent.setAction(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(intent, REQUEST_CODE);
+
+
     }
 
     public static Bitmap overlay(Bitmap bmp1, Bitmap bmp2) {
